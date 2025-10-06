@@ -1,25 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND = process.env.BACKEND_URL; // ex: https://eboutique-reconcil-beauty-afro.onrender.com
+const BACKEND = process.env.BACKEND_URL; // ex: https://eboutique-reconcil-beauty-afro.onrender.com/reconcil/api/shop
 if (!BACKEND) {
   throw new Error("❌ BACKEND_URL not set in environment");
 }
 
-// Ici on rajoute le préfixe backend
-const BACKEND_PREFIX = "/reconcil/api/shop";
-
 function getTargetPathFromReq(req: NextRequest) {
   const pathname = req.nextUrl.pathname || "";
-  const prefix = "/proxy"; // ton chemin exposé côté front
+  const prefix = "/proxy"; // chemin exposé côté front
   if (!pathname.startsWith(prefix)) return "";
   const rest = pathname.slice(prefix.length);
   return rest.startsWith("/") ? rest.slice(1) : rest; // ex: "products"
 }
 
 async function forwardRequest(req: NextRequest, targetPath: string) {
-  const fullPath = targetPath
-    ? `${BACKEND_PREFIX}/${targetPath}`
-    : BACKEND_PREFIX;
+  // fullPath correspond juste à ce qui vient après /proxy
+  const fullPath = targetPath ? `/${targetPath}` : "";
   const url = `${BACKEND}${fullPath}${req.nextUrl.search ?? ""}`;
 
   const forwarded = new Headers();
