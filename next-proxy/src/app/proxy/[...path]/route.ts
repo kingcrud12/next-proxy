@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND = process.env.BACKEND_URL; // ex: https://eboutique-reconcil-beauty-afro.onrender.com/reconcil/api/shop
+const BACKEND = process.env.BACKEND_URL; // https://eboutique-reconcil-beauty-afro.onrender.com
 if (!BACKEND) {
   throw new Error("❌ BACKEND_URL not set in environment");
 }
+
+const BACKEND_PREFIX = "/reconcil/api/shop"; // chemin complet côté backend
 
 function getTargetPathFromReq(req: NextRequest) {
   const pathname = req.nextUrl.pathname || "";
@@ -14,8 +16,9 @@ function getTargetPathFromReq(req: NextRequest) {
 }
 
 async function forwardRequest(req: NextRequest, targetPath: string) {
-  // fullPath correspond juste à ce qui vient après /proxy
-  const fullPath = targetPath ? `/${targetPath}` : "";
+  const fullPath = targetPath
+    ? `${BACKEND_PREFIX}/${targetPath}`
+    : BACKEND_PREFIX;
   const url = `${BACKEND}${fullPath}${req.nextUrl.search ?? ""}`;
 
   const forwarded = new Headers();
@@ -25,44 +28,52 @@ async function forwardRequest(req: NextRequest, targetPath: string) {
     forwarded.set(key, value);
   }
 
+  // Copie du cookie et Authorization si présent
   const cookie = req.headers.get("cookie");
   if (cookie) forwarded.set("cookie", cookie);
 
   const auth = req.headers.get("authorization");
   if (auth) forwarded.set("authorization", auth);
 
-  const method = req.method.toUpperCase();
   let body: BodyInit | undefined;
-  if (method !== "GET" && method !== "HEAD") {
-    try {
-      const text = await req.text();
-      if (text && text.length > 0) body = text;
-      const ct = req.headers.get("content-type");
-      if (ct && !forwarded.has("content-type"))
-        forwarded.set("content-type", ct);
-    } catch {}
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    const text = await req.text();
+    if (text) body = text;
+    const ct = req.headers.get("content-type");
+    if (ct && !forwarded.has("content-type")) forwarded.set("content-type", ct);
   }
 
-  const backendRes = await fetch(url, {
-    method,
-    headers: forwarded,
-    body,
-    credentials: "include",
-    redirect: "manual",
-  });
+  try {
+    const backendRes = await fetch(url, {
+      method: req.method,
+      headers: forwarded,
+      body,
+      credentials: "include",
+      redirect: "manual",
+    });
 
-  const buffer = await backendRes.arrayBuffer();
-  const resHeaders = new Headers();
-  backendRes.headers.forEach((value, key) => {
-    const lk = key.toLowerCase();
-    if (lk === "content-encoding") return;
-    resHeaders.set(key, value);
-  });
+    const buffer = await backendRes.arrayBuffer();
+    const resHeaders = new Headers();
+    backendRes.headers.forEach((value, key) => {
+      if (key.toLowerCase() === "content-encoding") return;
+      resHeaders.set(key, value);
+    });
 
-  return new NextResponse(Buffer.from(buffer), {
-    status: backendRes.status,
-    headers: resHeaders,
-  });
+    return new NextResponse(Buffer.from(buffer), {
+      status: backendRes.status,
+      headers: resHeaders,
+    });
+  } catch (err: unknown) {
+    let message = "Unknown error";
+    if (err instanceof Error) {
+      message = err.message;
+    }
+    console.error("Proxy fetch error:", message);
+    return new NextResponse(JSON.stringify({ message }), {
+      status: 500,
+      headers: { "content-type": "application/json" },
+    });
+  }
 }
 
 async function handle(req: NextRequest) {
