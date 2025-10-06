@@ -63,34 +63,35 @@ async function forwardRequest(req: NextRequest, targetPath: string) {
   });
 }
 
-// Handlers
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { path: string[] } }
-) {
-  return forwardRequest(req, params?.path?.join("/") ?? "");
+// --- Handlers pour Next 14+ ---
+type NextHandlerContext = { params: Record<string, string | string[]> };
+
+export async function GET(req: NextRequest, context: NextHandlerContext) {
+  const pathArray = context.params.path;
+  const path = Array.isArray(pathArray) ? pathArray.join("/") : pathArray || "";
+  return forwardRequest(req, path);
 }
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { path: string[] } }
-) {
-  return forwardRequest(req, params?.path?.join("/") ?? "");
+
+export async function POST(req: NextRequest, context: NextHandlerContext) {
+  const pathArray = context.params.path;
+  const path = Array.isArray(pathArray) ? pathArray.join("/") : pathArray || "";
+  return forwardRequest(req, path);
 }
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: { path: string[] } }
-) {
-  return forwardRequest(req, params?.path?.join("/") ?? "");
+
+export async function PUT(req: NextRequest, context: NextHandlerContext) {
+  const pathArray = context.params.path;
+  const path = Array.isArray(pathArray) ? pathArray.join("/") : pathArray || "";
+  return forwardRequest(req, path);
 }
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { path: string[] } }
-) {
-  return forwardRequest(req, params?.path?.join("/") ?? "");
+
+export async function PATCH(req: NextRequest, context: NextHandlerContext) {
+  const pathArray = context.params.path;
+  const path = Array.isArray(pathArray) ? pathArray.join("/") : pathArray || "";
+  return forwardRequest(req, path);
 }
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { path: string[] } }
-) {
-  return forwardRequest(req, params?.path?.join("/") ?? "");
+
+export async function DELETE(req: NextRequest, context: NextHandlerContext) {
+  const pathArray = context.params.path;
+  const path = Array.isArray(pathArray) ? pathArray.join("/") : pathArray || "";
+  return forwardRequest(req, path);
 }
