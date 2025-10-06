@@ -4,13 +4,14 @@ const BACKEND = process.env.BACKEND_URL; // ex: https://eboutique-reconcil-beaut
 if (!BACKEND) throw new Error("❌ BACKEND_URL not set in environment");
 
 const BACKEND_PREFIX = "/reconcil/api/shop"; // chemin côté backend
+const FRONT_URL = process.env.FRONT_URL || "*"; // ex: https://eboutique-reconcil-beauty-afro.vercel.app
 
 function getTargetPathFromReq(req: NextRequest) {
   const pathname = req.nextUrl.pathname || "";
   const prefix = "/proxy"; // chemin exposé côté front
   if (!pathname.startsWith(prefix)) return "";
   const rest = pathname.slice(prefix.length);
-  return rest.startsWith("/") ? rest.slice(1) : rest; // ex: "products"
+  return rest.startsWith("/") ? rest.slice(1) : rest;
 }
 
 async function forwardRequest(req: NextRequest, targetPath: string) {
@@ -55,7 +56,6 @@ async function forwardRequest(req: NextRequest, targetPath: string) {
     const text = await backendRes.text();
     let data: unknown;
 
-    // Tente de parser le JSON, sinon wrap le texte dans un tableau
     try {
       data = JSON.parse(text);
     } catch {
@@ -63,15 +63,20 @@ async function forwardRequest(req: NextRequest, targetPath: string) {
       data = [text];
     }
 
-    // S'assure que c'est un tableau pour le front
     if (!Array.isArray(data)) {
       data = [data];
     }
 
-    console.log("⬅️ Backend responded with status:", backendRes.status);
     return new NextResponse(JSON.stringify(data), {
       status: backendRes.status,
-      headers: { "content-type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": FRONT_URL,
+        "Access-Control-Allow-Methods":
+          "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, Cookie",
+        "Access-Control-Allow-Credentials": "true",
+      },
     });
   } catch (err: unknown) {
     let message = "Unknown error";
@@ -79,7 +84,14 @@ async function forwardRequest(req: NextRequest, targetPath: string) {
     console.error("Proxy fetch error:", message);
     return new NextResponse(JSON.stringify({ message }), {
       status: 500,
-      headers: { "content-type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": FRONT_URL,
+        "Access-Control-Allow-Methods":
+          "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, Cookie",
+        "Access-Control-Allow-Credentials": "true",
+      },
     });
   }
 }
@@ -87,6 +99,19 @@ async function forwardRequest(req: NextRequest, targetPath: string) {
 async function handle(req: NextRequest) {
   const targetPath = getTargetPathFromReq(req);
   return forwardRequest(req, targetPath);
+}
+
+// OPTIONS preflight pour CORS
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": FRONT_URL,
+      "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, Cookie",
+      "Access-Control-Allow-Credentials": "true",
+    },
+  });
 }
 
 // Export handlers
