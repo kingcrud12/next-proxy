@@ -1,68 +1,91 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND = process.env.BACKEND_URL;
-if (!BACKEND) throw new Error("BACKEND_URL not set");
+if (!BACKEND) {
+  throw new Error("❌ BACKEND_URL not set in environment");
+}
 
-// Fonction générique pour forward
-async function forwardRequest(req: NextRequest, path: string) {
-  const url = `${BACKEND}/${path}${req.nextUrl.search}`;
-  const headers = new Headers(req.headers);
-  headers.delete("host");
+function getTargetPathFromReq(req: NextRequest) {
+  const pathname = req.nextUrl.pathname || "";
+  const prefix = "/api/proxy";
+  if (!pathname.startsWith(prefix)) return "";
+  const rest = pathname.slice(prefix.length);
+  return rest.startsWith("/") ? rest.slice(1) : rest;
+}
+
+async function forwardRequest(req: NextRequest, targetPath: string) {
+  const fullPath = targetPath ? `/${targetPath}` : "/";
+  const url = `${BACKEND}${fullPath}${req.nextUrl.search ?? ""}`;
+
+  const forwarded = new Headers();
+  for (const [key, value] of req.headers.entries()) {
+    const lower = key.toLowerCase();
+    if (["host", "connection", "content-length"].includes(lower)) continue;
+    forwarded.set(key, value);
+  }
+
   const cookie = req.headers.get("cookie");
-  if (cookie) headers.set("cookie", cookie);
+  if (cookie) forwarded.set("cookie", cookie);
+
+  const auth = req.headers.get("authorization");
+  if (auth) forwarded.set("authorization", auth);
 
   const method = req.method.toUpperCase();
-  let body: BodyInit | undefined;
-  if (method !== "GET" && method !== "HEAD") body = await req.text();
 
-  const res = await fetch(url, {
+  let body: BodyInit | undefined;
+  if (method !== "GET" && method !== "HEAD") {
+    try {
+      const text = await req.text();
+      if (text && text.length > 0) body = text;
+      const ct = req.headers.get("content-type");
+      if (ct && !forwarded.has("content-type"))
+        forwarded.set("content-type", ct);
+    } catch {}
+  }
+
+  const backendRes = await fetch(url, {
     method,
-    headers,
+    headers: forwarded,
     body,
     credentials: "include",
+    redirect: "manual",
   });
-  const buffer = await res.arrayBuffer();
 
+  // Copy backend response body and headers
+  const buffer = await backendRes.arrayBuffer();
   const resHeaders = new Headers();
-  res.headers.forEach((value, key) => {
-    if (key.toLowerCase() === "content-encoding") return;
+  backendRes.headers.forEach((value, key) => {
+    // avoid forwarding certain headers that can break the response
+    const lk = key.toLowerCase();
+    if (lk === "content-encoding") return;
     resHeaders.set(key, value);
   });
 
   return new NextResponse(Buffer.from(buffer), {
-    status: res.status,
+    status: backendRes.status,
     headers: resHeaders,
   });
 }
 
-// --- Handlers dynamiques pour Next 15 App Router ---
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { path?: string[] } }
-) {
-  return forwardRequest(req, (params.path ?? []).join("/"));
+// Generic handler invoker to avoid repetition
+async function handle(req: NextRequest) {
+  const targetPath = getTargetPathFromReq(req);
+  return forwardRequest(req, targetPath);
 }
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { path?: string[] } }
-) {
-  return forwardRequest(req, (params.path ?? []).join("/"));
+
+// Export handlers (no context param, avoids typing mismatch)
+export async function GET(req: NextRequest) {
+  return handle(req);
 }
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: { path?: string[] } }
-) {
-  return forwardRequest(req, (params.path ?? []).join("/"));
+export async function POST(req: NextRequest) {
+  return handle(req);
 }
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { path?: string[] } }
-) {
-  return forwardRequest(req, (params.path ?? []).join("/"));
+export async function PUT(req: NextRequest) {
+  return handle(req);
 }
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { path?: string[] } }
-) {
-  return forwardRequest(req, (params.path ?? []).join("/"));
+export async function PATCH(req: NextRequest) {
+  return handle(req);
+}
+export async function DELETE(req: NextRequest) {
+  return handle(req);
 }
