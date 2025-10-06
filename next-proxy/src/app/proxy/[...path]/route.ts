@@ -52,17 +52,26 @@ async function forwardRequest(req: NextRequest, targetPath: string) {
       redirect: "manual",
     });
 
-    const buffer = await backendRes.arrayBuffer();
-    const resHeaders = new Headers();
-    backendRes.headers.forEach((value, key) => {
-      if (key.toLowerCase() === "content-encoding") return;
-      resHeaders.set(key, value);
-    });
+    const text = await backendRes.text();
+    let data: unknown;
+
+    // Tente de parser le JSON, sinon wrap le texte dans un tableau
+    try {
+      data = JSON.parse(text);
+    } catch {
+      console.warn("⚠️ Response is not valid JSON, wrapping in array");
+      data = [text];
+    }
+
+    // S'assure que c'est un tableau pour le front
+    if (!Array.isArray(data)) {
+      data = [data];
+    }
 
     console.log("⬅️ Backend responded with status:", backendRes.status);
-    return new NextResponse(Buffer.from(buffer), {
+    return new NextResponse(JSON.stringify(data), {
       status: backendRes.status,
-      headers: resHeaders,
+      headers: { "content-type": "application/json" },
     });
   } catch (err: unknown) {
     let message = "Unknown error";
